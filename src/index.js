@@ -51,14 +51,14 @@ const client = new Client({
 
 const slashCommands = [settingsCommand.data];
 
-// Slash Komutlarını Belirli Bir Sunucuya Anında Kaydetme Fonksiyonu
+// Slash Komutlarını Belirli Bir Sunucuya Kaydetme Fonksiyonu
 async function deployCommandsToGuild(rest, clientId, guild) {
   try {
     await rest.put(
       Routes.applicationGuildCommands(clientId, guild.id),
       { body: slashCommands.map(cmd => cmd.toJSON()) }
     );
-    console.log(`⚡ [${guild.name}] sunucusuna /ayarlar komutu anında kaydedildi.`);
+    console.log(`⚡ [${guild.name}] sunucusuna /ayarlar komutu kaydedildi.`);
   } catch (err) {
     console.error(`❌ [${guild.name}] komut yükleme hatası:`, err.message);
   }
@@ -71,20 +71,20 @@ client.once(Events.ClientReady, async (c) => {
 
   const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
-  // 1. ANINDA GÖRÜNMESİ İÇİN: Bulunulan her sunucuya tek tek anında yükle
-  for (const [_, guild] of c.guilds.cache) {
-    await deployCommandsToGuild(rest, c.user.id, guild);
-  }
-
-  // 2. Global olarak da güncelle
+  // 1. ÇİFT GÖZÜKMEYİ ENGELLEMEK İÇİN: Global komut listesini tamamen temizle
   try {
     await rest.put(
       Routes.applicationCommands(c.user.id),
-      { body: slashCommands.map(cmd => cmd.toJSON()) }
+      { body: [] }
     );
-    console.log('🌍 Global slash komutları güncellendi.');
+    console.log('🧹 Eski global komutlar temizlendi (çift görünme engellendi).');
   } catch (err) {
-    console.error('Global komut hatası:', err.message);
+    console.error('Global temizleme hatası:', err.message);
+  }
+
+  // 2. Yalnızca sunucu düzeyinde (Guild-Level) kaydet
+  for (const [_, guild] of c.guilds.cache) {
+    await deployCommandsToGuild(rest, c.user.id, guild);
   }
 
   // Canlı Yayın Takip Döngüsünü Başlat
@@ -102,7 +102,7 @@ client.once(Events.ClientReady, async (c) => {
   }
 });
 
-// Bot Yeni Bir Sunucuya Eklendiğinde Anında Komutları Yükle
+// Bot Yeni Bir Sunucuya Eklendiğinde Komutları Yükle
 client.on(Events.GuildCreate, async (guild) => {
   const rest = new REST().setToken(process.env.DISCORD_TOKEN);
   await deployCommandsToGuild(rest, client.user.id, guild);
