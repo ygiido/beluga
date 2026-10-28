@@ -10,35 +10,26 @@ const {
 } = require('discord.js');
 
 const { db } = require('./database/db');
-const { handleMessageModeration, initReleaseScheduler } = require('./modules/moderation/moderationEngine');
-const { sicilCommand } = require('./modules/moderation/sicilCommand');
 const {
-  handleVoiceStateUpdate,
-  handleTempVoiceInteraction,
-  handleTempVoiceModal,
-  cleanupGhostTempRooms
-} = require('./modules/tempvoice/tempVoiceManager');
-const {
-  handleTicketButton,
-  handleTicketModal,
-  handleTicketMemberSelect,
-  handleTicketFeedback,
-  handleMemberLeaveTicketCheck
-} = require('./modules/ticket/ticketManager');
-const {
+  handleVoiceState,
   handleMessageDelete,
   handleMessageUpdate,
-  handleVoiceAudit,
-  handleRoleUpdate,
-  checkAntiNuke,
+  handleMessageDeleteBulk,
   handleMemberJoin,
-  handleMemberLeave
+  handleMemberLeave,
+  handleMemberUpdate,
+  handleGuildBanAdd,
+  handleGuildBanRemove,
+  handleChannelCreate,
+  handleChannelDelete,
+  handleRoleCreate,
+  handleRoleDelete,
+  handleRoleUpdate,
+  checkAntiNuke
 } = require('./modules/logger/loggerManager');
-const {
-  panelCommand,
-  handlePanelInteraction,
-  handlePanelModal
-} = require('./modules/panel/panelManager');
+
+const setupCmd = require('./commands/setupCommand');
+const setChannelCmd = require('./commands/setChannelCommand');
 
 const client = new Client({
   intents: [
@@ -48,19 +39,17 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildInvites,
-    GatewayIntentBits.GuildModeration
+    GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.GuildEmojisAndStickers
   ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction]
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.GuildMember, Partials.User]
 });
 
-const commands = [
-  panelCommand.data,
-  require('./modules/moderation/sicilCommand').data
-];
+const slashCommands = [setupCmd.data, setChannelCmd.data];
 
 // Bot Hazır Olduğunda
 client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Beluga Bot aktif: ${c.user.tag}`);
+  console.log(`🤖 Beluga Ultra Logger Aktif: ${c.user.tag}`);
 
   // Slash Komutlarını Kaydet
   try {
@@ -68,18 +57,12 @@ client.once(Events.ClientReady, async (c) => {
     console.log('⚡ Slash komutları kaydediliyor...');
     await rest.put(
       Routes.applicationCommands(c.user.id),
-      { body: commands.map(cmd => cmd.toJSON()) }
+      { body: slashCommands.map(cmd => cmd.toJSON()) }
     );
-    console.log('✅ Slash komutları başarıyla kaydedildi.');
+    console.log('✅ /log-kur ve /log-ayarla komutları başarıyla kaydedildi.');
   } catch (err) {
     console.error('Slash komut kayıt hatası:', err);
   }
-
-  // Hayalet Odaları Temizle
-  await cleanupGhostTempRooms(c);
-
-  // Otomatik Ceza Tahliye Zamanlayıcısını Başlat
-  initReleaseScheduler(c);
 
   // Mevcut davetleri önbelleğe al
   for (const [_, guild] of c.guilds.cache) {
@@ -93,106 +76,78 @@ client.once(Events.ClientReady, async (c) => {
   }
 });
 
-// Mesaj Denetimi (Küfür, Spam, Scam)
-client.on(Events.MessageCreate, async (message) => {
-  await handleMessageModeration(message);
+// 1. SES LOGLARI (Mikrofon, Kulaklık, Kamera, Yayın, Giriş/Çıkış, Mesai)
+client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  await handleVoiceState(oldState, newState);
 });
 
-// Silinen Mesaj & CDN Medya Kurtarma & Ghost Ping
+// 2. MESAJ LOGLARI (Silme, Düzenleme, CDN Medya Kurtarma, Ghost Ping)
 client.on(Events.MessageDelete, async (message) => {
   await handleMessageDelete(message);
 });
 
-// Düzenlenen Mesaj Logu
 client.on(Events.MessageUpdate, async (oldMsg, newMsg) => {
   await handleMessageUpdate(oldMsg, newMsg);
 });
 
-// Dinamik Ses & Ses Mesai Denetimi
-client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
-  await handleVoiceStateUpdate(oldState, newState);
-  await handleVoiceAudit(oldState, newState);
+client.on(Events.MessageBulkDelete, async (messages, channel) => {
+  await handleMessageDeleteBulk(messages, channel);
 });
 
-// Yeni Üye Girişi (<15 gün şüpheli hesap + davetçi takibi)
+// 3. ÜYE HAREKETLERİ (Giriş, Çıkış, İsim, Rol, Timeout, Ban)
 client.on(Events.GuildMemberAdd, async (member) => {
   await handleMemberJoin(member);
 });
 
-// Üye Ayrılışı (Sahte davet düşme + askıda kalan bileti kapatma)
 client.on(Events.GuildMemberRemove, async (member) => {
   await handleMemberLeave(member);
-  await handleMemberLeaveTicketCheck(member);
 });
 
-// Kritik Rol Yetkisi Kırmızı Alarmı
-client.on(Events.GuildRoleUpdate, async (oldRole, newRole) => {
-  await handleRoleUpdate(oldRole, newRole);
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  await handleMemberUpdate(oldMember, newMember);
 });
 
-// Anti-Nuke (Seri Kanal & Rol Silme Koruması)
+client.on(Events.GuildBanAdd, async (ban) => {
+  await handleGuildBanAdd(ban);
+});
+
+client.on(Events.GuildBanRemove, async (ban) => {
+  await handleGuildBanRemove(ban);
+});
+
+// 4. KANAL, ROL & GÜVENLİK
+client.on(Events.ChannelCreate, async (channel) => {
+  await handleChannelCreate(channel);
+});
+
 client.on(Events.ChannelDelete, async (channel) => {
+  await handleChannelDelete(channel);
   if (channel.guild) await checkAntiNuke(channel.guild, AuditLogEvent.ChannelDelete);
 });
 
-client.on(Events.GuildRoleDelete, async (role) => {
+client.on(Events.RoleCreate, async (role) => {
+  await handleRoleCreate(role);
+});
+
+client.on(Events.RoleDelete, async (role) => {
+  await handleRoleDelete(role);
   if (role.guild) await checkAntiNuke(role.guild, AuditLogEvent.RoleDelete);
 });
 
-// Etkileşimler (Slash Komutları, Butonlar, Menüler, Modallar)
+client.on(Events.RoleUpdate, async (oldRole, newRole) => {
+  await handleRoleUpdate(oldRole, newRole);
+});
+
+// 5. ETKİLEŞİMLER (Slash Komutları)
 client.on(Events.InteractionCreate, async (interaction) => {
-  try {
-    // 1. Slash Komutları
-    if (interaction.isChatInputCommand()) {
-      if (interaction.commandName === 'panel') {
-        return await panelCommand.execute(interaction);
-      }
-      if (interaction.commandName === 'sicil') {
-        const sicilCmd = require('./modules/moderation/sicilCommand');
-        return await sicilCmd.execute(interaction);
-      }
-    }
+  if (!interaction.isChatInputCommand()) return;
 
-    // 2. Panel Etkileşimleri
-    if (interaction.customId?.startsWith('panel_')) {
-      return await handlePanelInteraction(interaction);
-    }
+  if (interaction.commandName === 'log-kur') {
+    return await setupCmd.execute(interaction);
+  }
 
-    // 3. Dinamik Ses Odası Etkileşimleri
-    if (interaction.customId?.startsWith('tv_')) {
-      if (interaction.isModalSubmit()) {
-        return await handleTempVoiceModal(interaction);
-      }
-      return await handleTempVoiceInteraction(interaction);
-    }
-
-    // 4. Destek (Ticket) Etkileşimleri
-    if (interaction.customId?.startsWith('ticket_')) {
-      if (interaction.isModalSubmit()) {
-        return await handleTicketModal(interaction);
-      }
-      if (interaction.isUserSelectMenu()) {
-        return await handleTicketMemberSelect(interaction);
-      }
-      return await handleTicketButton(interaction);
-    }
-
-    // 5. Destek Memnuniyet Puanlaması
-    if (interaction.customId?.startsWith('feedback_')) {
-      return await handleTicketFeedback(interaction);
-    }
-
-    // 6. Panel Modal Gönderimleri
-    if (interaction.isModalSubmit()) {
-      if (interaction.customId === 'panel_modal_ticket_cat') {
-        return await handlePanelModal(interaction);
-      }
-    }
-  } catch (err) {
-    console.error('Etkileşim işlenirken hata oluştu:', err);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ İşlem gerçekleştirilirken bir hata oluştu.', ephemeral: true }).catch(() => null);
-    }
+  if (interaction.commandName === 'log-ayarla') {
+    return await setChannelCmd.execute(interaction);
   }
 });
 
@@ -204,4 +159,3 @@ if (process.env.DISCORD_TOKEN) {
 } else {
   console.log('⚠️ DISCORD_TOKEN tanımlanmadı. Lütfen .env dosyasını doldurun.');
 }
-
