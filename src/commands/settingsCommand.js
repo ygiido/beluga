@@ -44,14 +44,20 @@ function getGeneralSettingsEmbed(guild) {
     return `<@&${role}>`;
   };
 
+  const adStatus = currentLogs.anti_ad_enabled !== 0 ? '🟢 Aktif' : '🔴 Kapalı';
+  const timeoutStatus = currentLogs.auto_timeout_enabled !== 0 ? '🟢 Aktif' : '🔴 Kapalı';
+
   return new EmbedBuilder()
     .setColor(0x5865F2)
     .setTitle(`⚙️ ${guild.name} — Bot Yönetim & Ayar Paneli`)
     .setDescription(
       `Aşağıdaki menüden yapılandırmak istediğiniz sistemi seçebilirsiniz:\n\n` +
+      `**🛡️ Koruma & Moderasyon Kalkanları:**\n` +
+      `• 🚫 Uyarısız Reklam & Link Engeli: **${adStatus}** (3. Reklamda Kick)\n` +
+      `• ⏳ Küfür, Spam & Flood Koruması: **${timeoutStatus}** (Katlanan 20dk Timeout)\n\n` +
       `**📜 Log Kanalları Durumu:**\n` +
       `• Mesaj: ${formatCh(currentLogs.message_log)} | Medya: ${formatCh(currentLogs.media_log)}\n` +
-      `• Ses & Kamera: ${formatCh(currentLogs.voice_log)} | Üye: ${formatCh(currentLogs.member_log)}\n` +
+      `• Ses: ${formatCh(currentLogs.voice_log)} | Üye: ${formatCh(currentLogs.member_log)}\n` +
       `• Sunucu/Rol: ${formatCh(currentLogs.server_log)} | Güvenlik: ${formatCh(currentLogs.security_log)}\n\n` +
       `**🔴 Canlı Yayın Duyuru Sistemi:**\n` +
       `• Duyuru Kanalı: ${formatCh(streamSettings.announcement_channel_id)}\n` +
@@ -67,6 +73,7 @@ function getMainNavigationMenu() {
     .setCustomId('settings_nav')
     .setPlaceholder('⚙️ Yapılandırmak istediğiniz kategoriyi seçin...')
     .addOptions([
+      { label: '🛡️ Koruma & Moderasyon Kalkanları', value: 'nav_security', description: 'Reklam/link engeli, küfür, spam ve katlanan timeout' },
       { label: '📜 Log & Denetim Kanalları Ayarları', value: 'nav_logs', description: 'Mesaj, ses, medya ve güvenlik log kanallarını bağla' },
       { label: '🔴 YouTube & Kick Canlı Yayın Duyuruları', value: 'nav_streamers', description: 'Yayıncı linkleri ekle, duyuru kanalını belirle' }
     ]);
@@ -74,7 +81,51 @@ function getMainNavigationMenu() {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-// 2. Yayıncı Ayarları Menüsü
+// 2. Güvenlik & Moderasyon Kalkanları Ekranı
+function getSecurityDashboardEmbed(guild) {
+  const currentLogs = getLogChannels(guild.id);
+  const adStatus = currentLogs.anti_ad_enabled !== 0;
+  const timeoutStatus = currentLogs.auto_timeout_enabled !== 0;
+
+  return new EmbedBuilder()
+    .setColor(0xED4245)
+    .setTitle('🛡️ Koruma & Moderasyon Kalkanları')
+    .setDescription(
+      `Sunucunuzun otomatik koruma mekanizmalarını aşağıdan tek tıkla açıp kapatabilirsiniz:\n\n` +
+      `**1. 🚫 Uyarısız Reklam & Link Engeli:** ${adStatus ? '🟢 **AKTİF**' : '🔴 **KAPALI**'}\n` +
+      `• Davet linkleri ve tüm harici web bağlantılarını uyarısız siler.\n` +
+      `• **Ceza:** 1. Reklam 1 Saat, 2. Reklam 24 Saat Timeout ➔ **3. Reklamda Sunucudan Atma (Kick)**!\n\n` +
+      `**2. ⏳ Küfür, Spam & Flood Koruması:** ${timeoutStatus ? '🟢 **AKTİF**' : '🔴 **KAPALI**'}\n` +
+      `• Leetspeak bypasslı küfürleri, hızlı spam ve flood mesajları siler.\n` +
+      `• **Ceza:** 20 dakikadan başlayan ve her tekrarda 2 katına katlanan (20dk ➔ 40dk ➔ 80dk...) Discord yerel zaman aşımı.`
+    )
+    .setFooter({ text: 'Butonlara basarak kalkanları anında açıp kapatabilirsiniz.' });
+}
+
+function getSecurityActionRow(guild) {
+  const currentLogs = getLogChannels(guild.id);
+  const adStatus = currentLogs.anti_ad_enabled !== 0;
+  const timeoutStatus = currentLogs.auto_timeout_enabled !== 0;
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('settings_toggle_ad')
+      .setLabel(`Reklam Engeli: ${adStatus ? 'AÇIK 🟢' : 'KAPALI 🔴'}`)
+      .setStyle(adStatus ? ButtonStyle.Success : ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId('settings_toggle_timeout')
+      .setLabel(`Küfür/Spam: ${timeoutStatus ? 'AÇIK 🟢' : 'KAPALI 🔴'}`)
+      .setStyle(timeoutStatus ? ButtonStyle.Success : ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId('settings_back_main')
+      .setLabel('◀️ Ana Menü')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  return [row];
+}
+
+// 3. Yayıncı Ayarları Menüsü
 function getStreamersDashboardEmbed(guild) {
   const streamSettings = getStreamSettings(guild.id);
   const streamers = db.prepare('SELECT * FROM streamers WHERE guild_id = ?').all(guild.id);
@@ -121,7 +172,7 @@ function getStreamerActionRows(guild) {
 const settingsCommand = {
   data: new SlashCommandBuilder()
     .setName('ayarlar')
-    .setDescription('Tüm bot ayarlarını (log kanalları ve yayın duyuruları) yönetir.')
+    .setDescription('Tüm bot ayarlarını (kalkanlar, loglar, yayın duyuruları) yönetir.')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
@@ -143,6 +194,17 @@ async function handleSettingsInteraction(interaction) {
   // 1. Ana Navigasyon
   if (customId === 'settings_nav') {
     const choice = interaction.values[0];
+
+    // MODERASYON & GÜVENLİK KALKANLARI
+    if (choice === 'nav_security') {
+      const secEmbed = getSecurityDashboardEmbed(guild);
+      const rows = getSecurityActionRow(guild);
+
+      return interaction.update({
+        embeds: [secEmbed],
+        components: rows
+      });
+    }
 
     // LOG AYARLARI
     if (choice === 'nav_logs') {
@@ -195,7 +257,36 @@ async function handleSettingsInteraction(interaction) {
     });
   }
 
-  // 3. Log Kanalı Seçim Adımları
+  // 3. Güvenlik Buton Aç/Kapa Etkileşimleri
+  if (customId === 'settings_toggle_ad') {
+    const currentLogs = getLogChannels(guild.id);
+    const newState = currentLogs.anti_ad_enabled !== 0 ? 0 : 1;
+    updateLogChannel(guild.id, 'anti_ad_enabled', newState);
+
+    const secEmbed = getSecurityDashboardEmbed(guild);
+    const rows = getSecurityActionRow(guild);
+
+    return interaction.update({
+      embeds: [secEmbed],
+      components: rows
+    });
+  }
+
+  if (customId === 'settings_toggle_timeout') {
+    const currentLogs = getLogChannels(guild.id);
+    const newState = currentLogs.auto_timeout_enabled !== 0 ? 0 : 1;
+    updateLogChannel(guild.id, 'auto_timeout_enabled', newState);
+
+    const secEmbed = getSecurityDashboardEmbed(guild);
+    const rows = getSecurityActionRow(guild);
+
+    return interaction.update({
+      embeds: [secEmbed],
+      components: rows
+    });
+  }
+
+  // 4. Log Kanalı Seçim Adımları
   if (customId === 'settings_select_log_cat') {
     const selectedCategory = interaction.values[0];
     const catInfo = LOG_CATEGORIES[selectedCategory];
@@ -239,9 +330,8 @@ async function handleSettingsInteraction(interaction) {
   }
 
   // -------------------------------------------------------------
-  // 4. CANLI YAYIN DUYURU ETKİLEŞİMLERİ
+  // 5. CANLI YAYIN DUYURU ETKİLEŞİMLERİ
   // -------------------------------------------------------------
-  // A. Duyuru Kanalı Seçme Butonu
   if (customId === 'stream_btn_set_channel') {
     const chMenu = new ChannelSelectMenuBuilder()
       .setCustomId('stream_select_channel')
@@ -258,7 +348,6 @@ async function handleSettingsInteraction(interaction) {
     return interaction.update({ content: `✅ Canlı yayın duyuru kanalı <#${chId}> olarak belirlendi!`, components: [] });
   }
 
-  // B. Yayıncı Ekleme Butonu (Modal Açma)
   if (customId === 'stream_btn_add_streamer') {
     const modal = new ModalBuilder()
       .setCustomId('stream_modal_add')
@@ -294,7 +383,6 @@ async function handleSettingsInteraction(interaction) {
     return interaction.showModal(modal);
   }
 
-  // C. Yayıncı Silme Butonu
   if (customId === 'stream_btn_remove_streamer') {
     const streamers = db.prepare('SELECT * FROM streamers WHERE guild_id = ?').all(guild.id);
     if (streamers.length === 0) {
@@ -323,7 +411,6 @@ async function handleSettingsInteraction(interaction) {
     return interaction.update({ content: '✅ Yayıncı başarıyla listeden kaldırıldı!', components: [] });
   }
 
-  // D. Bildirim Rolü Seçme Butonu
   if (customId === 'stream_btn_set_role') {
     const roleMenu = new RoleSelectMenuBuilder()
       .setCustomId('stream_select_role')

@@ -18,7 +18,9 @@ db.exec(`
     server_log TEXT,
     security_log TEXT,
     anti_nuke_enabled INTEGER DEFAULT 1,
-    media_recovery_enabled INTEGER DEFAULT 1
+    media_recovery_enabled INTEGER DEFAULT 1,
+    anti_ad_enabled INTEGER DEFAULT 1,
+    auto_timeout_enabled INTEGER DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS voice_sessions (
@@ -79,6 +81,14 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id)
   );
 `);
+
+// Eski tablolarda sütun yoksa güvenle ekle
+try {
+  db.exec('ALTER TABLE guild_log_channels ADD COLUMN anti_ad_enabled INTEGER DEFAULT 1');
+} catch (e) {}
+try {
+  db.exec('ALTER TABLE guild_log_channels ADD COLUMN auto_timeout_enabled INTEGER DEFAULT 1');
+} catch (e) {}
 
 function getLogChannels(guildId) {
   let row = db.prepare('SELECT * FROM guild_log_channels WHERE guild_id = ?').get(guildId);

@@ -28,6 +28,10 @@ function checkAdOrLink(content) {
 async function handleAntiAd(message) {
   if (!message.guild || message.author.bot || !message.member) return false;
 
+  const settings = getLogChannels(message.guild.id);
+  // Reklam koruması kapalıysa işlem yapma
+  if (settings.anti_ad_enabled === 0) return false;
+
   // Yetkilileri muaf tut
   if (
     message.member.permissions.has(PermissionFlagsBits.ManageMessages) ||
@@ -86,7 +90,6 @@ async function handleAntiAd(message) {
   }
 
   // 3. Güvenlik Denetim Loguna Raporla (Kanalda sessiz kalırken yetkilileri bilgilendirir)
-  const settings = getLogChannels(guild.id);
   const targetLogId = settings.security_log || settings.member_log || settings.message_log;
 
   if (targetLogId) {
@@ -118,3 +121,4 @@ module.exports = {
   handleAntiAd,
   checkAdOrLink
 };
+

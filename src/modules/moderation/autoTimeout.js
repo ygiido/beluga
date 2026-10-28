@@ -115,6 +115,10 @@ function formatDuration(minutes) {
 async function handleAutoModeration(message) {
   if (!message.guild || message.author.bot || !message.member) return;
 
+  const settings = getLogChannels(message.guild.id);
+  // Küfür/Spam/Flood koruması kapalıysa işlem yapma
+  if (settings.auto_timeout_enabled === 0) return;
+
   // Yetkilileri muaf tut
   if (
     message.member.permissions.has(PermissionFlagsBits.ManageMessages) ||
