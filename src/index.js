@@ -28,8 +28,7 @@ const {
   checkAntiNuke
 } = require('./modules/logger/loggerManager');
 
-const setupCmd = require('./commands/setupCommand');
-const setChannelCmd = require('./commands/setChannelCommand');
+const { settingsCommand, handleSettingsInteraction } = require('./commands/settingsCommand');
 
 const client = new Client({
   intents: [
@@ -45,13 +44,13 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.GuildMember, Partials.User]
 });
 
-const slashCommands = [setupCmd.data, setChannelCmd.data];
+const slashCommands = [settingsCommand.data];
 
 // Bot Hazır Olduğunda
 client.once(Events.ClientReady, async (c) => {
   console.log(`🤖 Beluga Ultra Logger Aktif: ${c.user.tag}`);
 
-  // Slash Komutlarını Kaydet
+  // Slash Komutlarını Kaydet (/ayarlar)
   try {
     const rest = new REST().setToken(process.env.DISCORD_TOKEN);
     console.log('⚡ Slash komutları kaydediliyor...');
@@ -59,7 +58,7 @@ client.once(Events.ClientReady, async (c) => {
       Routes.applicationCommands(c.user.id),
       { body: slashCommands.map(cmd => cmd.toJSON()) }
     );
-    console.log('✅ /log-kur ve /log-ayarla komutları başarıyla kaydedildi.');
+    console.log('✅ /ayarlar komutu başarıyla kaydedildi.');
   } catch (err) {
     console.error('Slash komut kayıt hatası:', err);
   }
@@ -138,16 +137,23 @@ client.on(Events.RoleUpdate, async (oldRole, newRole) => {
   await handleRoleUpdate(oldRole, newRole);
 });
 
-// 5. ETKİLEŞİMLER (Slash Komutları)
+// 5. ETKİLEŞİMLER (Slash Komutları & Menü Seçimleri)
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  try {
+    if (interaction.isChatInputCommand()) {
+      if (interaction.commandName === 'ayarlar') {
+        return await settingsCommand.execute(interaction);
+      }
+    }
 
-  if (interaction.commandName === 'log-kur') {
-    return await setupCmd.execute(interaction);
-  }
-
-  if (interaction.commandName === 'log-ayarla') {
-    return await setChannelCmd.execute(interaction);
+    if (interaction.customId?.startsWith('settings_')) {
+      return await handleSettingsInteraction(interaction);
+    }
+  } catch (err) {
+    console.error('Etkileşim hatası:', err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ İşlem sırasında bir hata oluştu.', ephemeral: true }).catch(() => null);
+    }
   }
 });
 
