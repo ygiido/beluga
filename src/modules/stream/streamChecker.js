@@ -88,8 +88,7 @@ async function checkYouTubeChannel(channelInput) {
 
 // Canlı Yayın Duyuru Döngüsü
 function initStreamNotificationScheduler(client) {
-  // Her 60 saniyede bir tüm kanalları kontrol et
-  setInterval(async () => {
+  const runCheck = async () => {
     const streamers = db.prepare('SELECT * FROM streamers').all();
     if (streamers.length === 0) return;
 
@@ -105,7 +104,7 @@ function initStreamNotificationScheduler(client) {
 
         const now = Date.now();
 
-        // 1. Yeni Canlı Yayına Girdi (Duyuru Gönder!)
+        // 1. Yeni Canlı Yayına Girdi (Bot kapalıyken bile başlasa yakalar!)
         if (streamInfo.isLive && (!streamer.is_live || (streamInfo.streamId && streamInfo.streamId !== streamer.last_stream_id))) {
           db.prepare('UPDATE streamers SET is_live = 1, last_stream_id = ?, last_checked_at = ? WHERE id = ?')
             .run(streamInfo.streamId, now, streamer.id);
@@ -169,7 +168,13 @@ function initStreamNotificationScheduler(client) {
         console.error(`Yayın kontrol hatası (${streamer.channel_name}):`, err);
       }
     }
-  }, 60000); // 60 saniyede bir tara
+  };
+
+  // Bot açılır açılmaz beklemeden ilk taramayı hemen yap
+  runCheck();
+
+  // Sonrasında her 60 saniyede bir periyodik tara
+  setInterval(runCheck, 60000);
 }
 
 module.exports = {
