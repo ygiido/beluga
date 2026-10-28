@@ -28,6 +28,7 @@ const {
   checkAntiNuke
 } = require('./modules/logger/loggerManager');
 
+const { handleAutoModeration } = require('./modules/moderation/autoTimeout');
 const { initStreamNotificationScheduler } = require('./modules/stream/streamChecker');
 const {
   settingsCommand,
@@ -66,23 +67,23 @@ async function deployCommandsToGuild(rest, clientId, guild) {
 
 // Bot Hazır Olduğunda
 client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Beluga Ultra Logger & Stream Alerts Aktif: ${c.user.tag}`);
+  console.log(`🤖 Beluga Ultra Logger, Stream Alerts & Auto-Timeout Aktif: ${c.user.tag}`);
   console.log(`📊 Botun bulunduğu sunucu sayısı: ${c.guilds.cache.size}`);
 
   const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
-  // 1. ÇİFT GÖZÜKMEYİ ENGELLEMEK İÇİN: Global komut listesini tamamen temizle
+  // 1. Çift komut görünmesini engellemek için Global listeyi temizle
   try {
     await rest.put(
       Routes.applicationCommands(c.user.id),
       { body: [] }
     );
-    console.log('🧹 Eski global komutlar temizlendi (çift görünme engellendi).');
+    console.log('🧹 Eski global komutlar temizlendi.');
   } catch (err) {
     console.error('Global temizleme hatası:', err.message);
   }
 
-  // 2. Yalnızca sunucu düzeyinde (Guild-Level) kaydet
+  // 2. Yalnızca sunucu düzeyinde anında kaydet
   for (const [_, guild] of c.guilds.cache) {
     await deployCommandsToGuild(rest, c.user.id, guild);
   }
@@ -106,6 +107,11 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.GuildCreate, async (guild) => {
   const rest = new REST().setToken(process.env.DISCORD_TOKEN);
   await deployCommandsToGuild(rest, client.user.id, guild);
+});
+
+// Otomatik Moderasyon (Küfür, Spam, Flood ➔ Katlanarak Artan Timeout)
+client.on(Events.MessageCreate, async (message) => {
+  await handleAutoModeration(message);
 });
 
 // 1. SES LOGLARI (Mikrofon, Kulaklık, Kamera, Yayın, Giriş/Çıkış, Mesai)

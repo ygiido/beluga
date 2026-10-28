@@ -62,6 +62,14 @@ db.exec(`
     last_stream_id TEXT,
     last_checked_at INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS user_violations (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    violation_count INTEGER DEFAULT 0,
+    last_violation_at INTEGER,
+    PRIMARY KEY (guild_id, user_id)
+  );
 `);
 
 function getLogChannels(guildId) {
@@ -92,10 +100,28 @@ function updateStreamSettings(guildId, field, value) {
   db.prepare(`UPDATE stream_settings SET ${field} = ? WHERE guild_id = ?`).run(value, guildId);
 }
 
+function incrementUserViolation(guildId, userId) {
+  const existing = db.prepare('SELECT * FROM user_violations WHERE guild_id = ? AND user_id = ?').get(guildId, userId);
+  const now = Date.now();
+  let count = 1;
+
+  if (existing) {
+    count = existing.violation_count + 1;
+    db.prepare('UPDATE user_violations SET violation_count = ?, last_violation_at = ? WHERE guild_id = ? AND user_id = ?')
+      .run(count, now, guildId, userId);
+  } else {
+    db.prepare('INSERT INTO user_violations (guild_id, user_id, violation_count, last_violation_at) VALUES (?, ?, 1, ?)')
+      .run(guildId, userId, now);
+  }
+
+  return count;
+}
+
 module.exports = {
   db,
   getLogChannels,
   updateLogChannel,
   getStreamSettings,
-  updateStreamSettings
+  updateStreamSettings,
+  incrementUserViolation
 };
