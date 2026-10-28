@@ -28,7 +28,12 @@ const {
   checkAntiNuke
 } = require('./modules/logger/loggerManager');
 
-const { settingsCommand, handleSettingsInteraction } = require('./commands/settingsCommand');
+const { initStreamNotificationScheduler } = require('./modules/stream/streamChecker');
+const {
+  settingsCommand,
+  handleSettingsInteraction,
+  handleStreamModal
+} = require('./commands/settingsCommand');
 
 const client = new Client({
   intents: [
@@ -48,7 +53,7 @@ const slashCommands = [settingsCommand.data];
 
 // Bot Hazır Olduğunda
 client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Beluga Ultra Logger Aktif: ${c.user.tag}`);
+  console.log(`🤖 Beluga Ultra Logger & Stream Alerts Aktif: ${c.user.tag}`);
 
   // Slash Komutlarını Kaydet (/ayarlar)
   try {
@@ -62,6 +67,9 @@ client.once(Events.ClientReady, async (c) => {
   } catch (err) {
     console.error('Slash komut kayıt hatası:', err);
   }
+
+  // Canlı Yayın Takip Döngüsünü Başlat
+  initStreamNotificationScheduler(c);
 
   // Mevcut davetleri önbelleğe al
   for (const [_, guild] of c.guilds.cache) {
@@ -137,7 +145,7 @@ client.on(Events.RoleUpdate, async (oldRole, newRole) => {
   await handleRoleUpdate(oldRole, newRole);
 });
 
-// 5. ETKİLEŞİMLER (Slash Komutları & Menü Seçimleri)
+// 5. ETKİLEŞİMLER (Slash Komutları, Butonlar, Menüler, Modallar)
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
@@ -146,7 +154,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
-    if (interaction.customId?.startsWith('settings_')) {
+    if (interaction.isModalSubmit()) {
+      if (interaction.customId === 'stream_modal_add') {
+        return await handleStreamModal(interaction);
+      }
+    }
+
+    if (interaction.customId?.startsWith('settings_') || interaction.customId?.startsWith('stream_')) {
       return await handleSettingsInteraction(interaction);
     }
   } catch (err) {

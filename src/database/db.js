@@ -44,6 +44,24 @@ db.exec(`
     joined_at INTEGER NOT NULL,
     PRIMARY KEY (guild_id, user_id)
   );
+
+  CREATE TABLE IF NOT EXISTS stream_settings (
+    guild_id TEXT PRIMARY KEY,
+    announcement_channel_id TEXT,
+    ping_role_id TEXT,
+    custom_message TEXT DEFAULT '{streamer} şu anda canlı yayında!'
+  );
+
+  CREATE TABLE IF NOT EXISTS streamers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    channel_name TEXT NOT NULL,
+    channel_url TEXT NOT NULL,
+    is_live INTEGER DEFAULT 0,
+    last_stream_id TEXT,
+    last_checked_at INTEGER
+  );
 `);
 
 function getLogChannels(guildId) {
@@ -60,8 +78,24 @@ function updateLogChannel(guildId, field, channelId) {
   db.prepare(`UPDATE guild_log_channels SET ${field} = ? WHERE guild_id = ?`).run(channelId, guildId);
 }
 
+function getStreamSettings(guildId) {
+  let row = db.prepare('SELECT * FROM stream_settings WHERE guild_id = ?').get(guildId);
+  if (!row) {
+    db.prepare('INSERT OR IGNORE INTO stream_settings (guild_id) VALUES (?)').run(guildId);
+    row = db.prepare('SELECT * FROM stream_settings WHERE guild_id = ?').get(guildId);
+  }
+  return row;
+}
+
+function updateStreamSettings(guildId, field, value) {
+  getStreamSettings(guildId);
+  db.prepare(`UPDATE stream_settings SET ${field} = ? WHERE guild_id = ?`).run(value, guildId);
+}
+
 module.exports = {
   db,
   getLogChannels,
-  updateLogChannel
+  updateLogChannel,
+  getStreamSettings,
+  updateStreamSettings
 };
