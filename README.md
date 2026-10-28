@@ -1,42 +1,40 @@
-# 🐋 Beluga Ultra Logger, Stream Alerts & Auto-Moderation (v0.0.1)
+# 🐋 Beluga Ultra Logger, Stream Alerts & Anti-Ad System (v0.0.1)
 
-Beluga, Discord sunucunuzdaki her türlü hareketi kaydeden, **YouTube & Kick** canlı yayınlarını duyuran ve **küfür/spam/flood** durumunda Discord'un kendi **zaman aşımı (timeout)** sistemini katlanarak artıran gelişmiş bir Discord botudur.
+Beluga, Discord sunucunuzdaki her türlü hareketi kaydeden, **YouTube & Kick** canlı yayınlarını duyuran, **uyarısız reklam/link engelleyici** ve **katlanan timeout** motoruna sahip yeni nesil bir Discord botudur.
 
 ## 🎯 Özellikler
 
-### 1. 🛡️ Akıllı Auto-Moderation & Katlanan Timeout Sistemi
-* **Tetikleyiciler:**
-  * **Küfür & Hakaret:** Leetspeak (`0->o`, `1->i`, `@->a`), harf uzatmaları (`siiikkk`) ve araya nokta/boşluk koyma taktiklerini normalize ederek yakalar.
-  * **Spam:** 3 saniyede 4+ mesaj gönderenleri tespit eder.
-  * **Flood:** Aynı mesajı art arda kopyalayıp atanları veya devasa karakter/satır flood'larını yakalar.
-* **Katlanan Süre Mantığı (20 Dakikadan Başlayarak):**
-  * **1. İhlal:** 20 Dakika Timeout
-  * **2. İhlal:** 40 Dakika Timeout (2 katı)
-  * **3. İhlal:** 80 Dakika (1 Saat 20 Dk) Timeout
-  * **4. İhlal:** 160 Dakika (2 Saat 40 Dk) Timeout
-  * Her ihlalde ceza katlanarak devam eder (Discord'un 28 günlük üst sınırına kadar).
-* **Temizlik & Bildirim:**
-  * İhlal mesajı anında silinir.
-  * Kanala 8 saniyede kendini imha eden ceza uyarısı düşer.
-  * Log kanalına detaylı ihlal raporu gönderilir.
-  * Yetkililer (`ManageMessages` veya `Administrator`) cezadan muaftır.
+### 1. 🚫 Uyarısız Anti-Reklam & Link Engelleyici (3. İhlalde Kick)
+* **Kapsam:** Discord sunucu davet linkleri (`discord.gg/...`, `discord.com/invite/...`, `dsc.gg/...`), tüm harici web linkleri (`http`, `https`, `www`, `.com`, `.net`, `.xyz`, `.gg` vb.) ve araya nokta/boşluk koyularak yapılan bypass taktikleri (`discord(.)gg`, `site dot com`).
+* **Uyarısız Çalışma Prensibi:** Sohbette gereksiz kirlilik yaratmamak için kanala hiçbir uyarı mesajı atılmaz; mesaj anında sessizce silinir ve Discord'un yerel ceza motoru devreye girer.
+* **Kademeli Ceza:**
+  * **1. Reklam:** Mesaj silinir ➔ **1 Saat Discord Timeout (Zaman Aşımı)**.
+  * **2. Reklam:** Mesaj silinir ➔ **24 Saat (1 Gün) Timeout**.
+  * **3. Reklam:** Mesaj silinir ➔ **Sunucudan Derhal Atılır (KICK)!**
+* **Detaylı Güvenlik Logu:** Engellenen link, kullanıcının bilgileri ve uygulanan ceza anında `#güvenlik-alarm-log` veya `#üye-log` kanalına kanıt olarak iletilir.
+* Yetkililer (`ManageMessages` veya `Administrator`) muaftır.
 
-### 2. 🔴 Canlı Yayın Duyuru Motoru (YouTube & Kick)
+### 2. 🛡️ Akıllı Auto-Moderation & Katlanan Timeout
+* Küfür, spam ve flood durumunda Discord yerel timeout'u uygulanır.
+* Süre **20 dakikadan** başlar ve her tekrarda 2 katına katlanır (20dk ➔ 40dk ➔ 80dk ➔ 160dk...).
+* 8 saniyede kendini imha eden uyarı mesajı ve log kaydı oluşturur.
+
+### 3. 🔴 Canlı Yayın Duyuru Motoru (YouTube & Kick)
 * Eklenen kanalları periyodik tarar, yayın başladığı an butonlu estetik embed atar.
 * Yayıncı kapak görseli, canlı izleyici, kategori ve **"🔴 Yayına Katıl ve İzle"** link butonu.
 * Opsiyonel `@everyone`, `@here` veya özel rol etiketleme.
 
-### 3. 🎙️ Ses, Mikrofon & Kamera Logları
+### 4. 🎙️ Ses, Mikrofon & Kamera Logları
 * Odaya katıldı / ayrıldı / kanal değiştirdi.
 * **Net Mesai Süresi:** Odadan çıkışta tam süre hesabı (`⏱️ 1 saat 24 dakika 15 saniye`).
 * Mikrofon kapatma/açma 🔇🎙️, kulaklık kapatma/açma 🎧🔊, kamera 📹📷, ekran yayını 🖥️.
 
-### 4. 💬 Mesaj Logları & Medya Kurtarma
+### 5. 💬 Mesaj Logları & Medya Kurtarma
 * **Silinen Medyaları Kurtarma:** Silinen fotoğrafları Discord CDN'den kaybolmadan önce log kanalına tekrar yükler.
 * **Ghost Ping Avcısı:** 60 saniye içinde etiket atıp silenleri ifşa eder.
 * **Mesaj Düzenleme & Toplu Silme (Purge).**
 
-### 5. 👤 Üye & Güvenlik Hareketleri
+### 6. 👤 Üye & Güvenlik Hareketleri
 * Hesap yaşı kontrolü, davet eden kişi tespiti, sahte davet alarmı, isim/rol/timeout logları.
 * **Anti-Nuke:** 10 saniyede birden fazla kanal veya rol silmeye kalkan yetkilinin yetkilerini anında sıfırlar.
 

@@ -28,6 +28,7 @@ const {
   checkAntiNuke
 } = require('./modules/logger/loggerManager');
 
+const { handleAntiAd } = require('./modules/moderation/antiAd');
 const { handleAutoModeration } = require('./modules/moderation/autoTimeout');
 const { initStreamNotificationScheduler } = require('./modules/stream/streamChecker');
 const {
@@ -67,7 +68,7 @@ async function deployCommandsToGuild(rest, clientId, guild) {
 
 // Bot Hazır Olduğunda
 client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Beluga Ultra Logger, Stream Alerts & Auto-Timeout Aktif: ${c.user.tag}`);
+  console.log(`🤖 Beluga Ultra Logger, Stream Alerts & Anti-Ad Aktif: ${c.user.tag}`);
   console.log(`📊 Botun bulunduğu sunucu sayısı: ${c.guilds.cache.size}`);
 
   const rest = new REST().setToken(process.env.DISCORD_TOKEN);
@@ -109,8 +110,11 @@ client.on(Events.GuildCreate, async (guild) => {
   await deployCommandsToGuild(rest, client.user.id, guild);
 });
 
-// Otomatik Moderasyon (Küfür, Spam, Flood ➔ Katlanarak Artan Timeout)
+// Mesaj Denetimi: Önce Uyarısız Reklam/Link Kontrolü, Sonra Katlanan Timeout
 client.on(Events.MessageCreate, async (message) => {
+  const isAd = await handleAntiAd(message);
+  if (isAd) return;
+
   await handleAutoModeration(message);
 });
 

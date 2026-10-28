@@ -224,3 +224,4 @@ async function handleAutoModeration(message) {
 module.exports = {
   handleAutoModeration
 };
+
