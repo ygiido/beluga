@@ -51,21 +51,40 @@ const client = new Client({
 
 const slashCommands = [settingsCommand.data];
 
+// Slash Komutlarını Belirli Bir Sunucuya Anında Kaydetme Fonksiyonu
+async function deployCommandsToGuild(rest, clientId, guild) {
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(clientId, guild.id),
+      { body: slashCommands.map(cmd => cmd.toJSON()) }
+    );
+    console.log(`⚡ [${guild.name}] sunucusuna /ayarlar komutu anında kaydedildi.`);
+  } catch (err) {
+    console.error(`❌ [${guild.name}] komut yükleme hatası:`, err.message);
+  }
+}
+
 // Bot Hazır Olduğunda
 client.once(Events.ClientReady, async (c) => {
   console.log(`🤖 Beluga Ultra Logger & Stream Alerts Aktif: ${c.user.tag}`);
+  console.log(`📊 Botun bulunduğu sunucu sayısı: ${c.guilds.cache.size}`);
 
-  // Slash Komutlarını Kaydet (/ayarlar)
+  const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+
+  // 1. ANINDA GÖRÜNMESİ İÇİN: Bulunulan her sunucuya tek tek anında yükle
+  for (const [_, guild] of c.guilds.cache) {
+    await deployCommandsToGuild(rest, c.user.id, guild);
+  }
+
+  // 2. Global olarak da güncelle
   try {
-    const rest = new REST().setToken(process.env.DISCORD_TOKEN);
-    console.log('⚡ Slash komutları kaydediliyor...');
     await rest.put(
       Routes.applicationCommands(c.user.id),
       { body: slashCommands.map(cmd => cmd.toJSON()) }
     );
-    console.log('✅ /ayarlar komutu başarıyla kaydedildi.');
+    console.log('🌍 Global slash komutları güncellendi.');
   } catch (err) {
-    console.error('Slash komut kayıt hatası:', err);
+    console.error('Global komut hatası:', err.message);
   }
 
   // Canlı Yayın Takip Döngüsünü Başlat
@@ -81,6 +100,12 @@ client.once(Events.ClientReady, async (c) => {
       }
     } catch (e) {}
   }
+});
+
+// Bot Yeni Bir Sunucuya Eklendiğinde Anında Komutları Yükle
+client.on(Events.GuildCreate, async (guild) => {
+  const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+  await deployCommandsToGuild(rest, client.user.id, guild);
 });
 
 // 1. SES LOGLARI (Mikrofon, Kulaklık, Kamera, Yayın, Giriş/Çıkış, Mesai)
