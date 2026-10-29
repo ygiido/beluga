@@ -87,6 +87,7 @@ db.exec(`
     channel_id TEXT PRIMARY KEY,
     guild_id TEXT NOT NULL,
     owner_id TEXT NOT NULL,
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
     is_locked INTEGER DEFAULT 0,
     is_hidden INTEGER DEFAULT 0,
     user_limit INTEGER DEFAULT 0,

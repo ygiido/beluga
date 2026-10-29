@@ -104,7 +104,12 @@ async function handleTempVoice(oldState, newState) {
         permissionOverwrites: [
           {
             id: guild.id, // @everyone
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect]
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.Connect,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory
+            ]
           },
           {
             id: member.id, // Oda Kurucusu
@@ -113,6 +118,19 @@ async function handleTempVoice(oldState, newState) {
               PermissionFlagsBits.Connect,
               PermissionFlagsBits.Speak,
               PermissionFlagsBits.MoveMembers,
+              PermissionFlagsBits.ManageChannels,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory
+            ]
+          },
+          {
+            id: guild.client.user.id, // Bot
+            allow: [
+              PermissionFlagsBits.ViewChannel,
+              PermissionFlagsBits.Connect,
+              PermissionFlagsBits.SendMessages,
+              PermissionFlagsBits.ReadMessageHistory,
+              PermissionFlagsBits.EmbedLinks,
               PermissionFlagsBits.ManageChannels
             ]
           }
@@ -124,9 +142,9 @@ async function handleTempVoice(oldState, newState) {
 
       // Veritabanına kaydet
       db.prepare(`
-        INSERT INTO temp_voices (channel_id, guild_id, owner_id, is_locked, is_hidden, user_limit)
-        VALUES (?, ?, ?, 0, 0, 0)
-      `).run(channel.id, guild.id, member.id);
+        INSERT INTO temp_voices (channel_id, guild_id, owner_id, created_at, is_locked, is_hidden, user_limit)
+        VALUES (?, ?, ?, ?, 0, 0, 0)
+      `).run(channel.id, guild.id, member.id, Date.now());
 
       const roomData = { is_locked: 0, is_hidden: 0, user_limit: 0 };
 
@@ -411,3 +429,4 @@ module.exports = {
   handleTempVoiceModal,
   cleanupGhostTempRooms
 };
+

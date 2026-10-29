@@ -53,3 +53,4 @@ async function handleMediaOnly(message) {
 module.exports = {
   handleMediaOnly
 };
+
