@@ -125,35 +125,34 @@ function initStreamNotificationScheduler(client) {
           else if (streamSettings.ping_role_id) pingText = `<@&${streamSettings.ping_role_id}>`;
 
           const brandColor = streamer.platform.toLowerCase() === 'kick' ? 0x53FC18 : 0xFF0000;
-          const platformLogo = streamer.platform.toLowerCase() === 'kick' ? '🟩 KICK' : '🟥 YOUTUBE';
 
           const embed = new EmbedBuilder()
             .setColor(brandColor)
-            .setAuthor({ name: `${platformLogo} CANLI YAYIN BAŞLADI!`, url: streamInfo.streamUrl })
-            .setTitle(streamInfo.title || `${streamer.channel_name} Canlı Yayında!`)
+            .setAuthor({
+              name: `${streamer.channel_name} (${streamer.platform.toUpperCase()})`,
+              iconURL: streamInfo.avatar || undefined,
+              url: streamInfo.streamUrl
+            })
+            .setTitle(streamInfo.title || 'Canlı Yayın Başladı!')
             .setURL(streamInfo.streamUrl)
-            .setDescription(`🚨 **${streamer.channel_name}** şu anda **${streamer.platform.toUpperCase()}** üzerinde canlı yayına geçti! Kaçırmadan yayına katılın.`)
-            .addFields(
-              { name: '📺 Platform', value: streamer.platform.toUpperCase(), inline: true },
-              { name: '🎮 Kategori', value: streamInfo.category || 'Genel', inline: true },
-              { name: '👤 Yayıncı', value: streamer.channel_name, inline: true }
+            .setDescription(
+              `🎮 **Kategori:** ${streamInfo.category || 'Genel'}` +
+              (streamInfo.viewers ? `\n👀 **İzleyici:** ${streamInfo.viewers.toLocaleString('tr-TR')}` : '')
             );
 
           if (streamInfo.thumbnail) embed.setImage(streamInfo.thumbnail);
-          if (streamInfo.avatar) embed.setThumbnail(streamInfo.avatar);
+          embed.setFooter({ text: `${streamer.platform.toUpperCase()}` }).setTimestamp();
 
-          embed.setFooter({ text: 'Beluga Canlı Yayın Takip Sistemi' }).setTimestamp();
-
-          // Buton (Yayına Doğrudan Git)
+          // Buton (Sade ve net)
           const buttonRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-              .setLabel('🔴 Yayına Katıl ve İzle')
+              .setLabel('▶️ Yayını İzle')
               .setStyle(ButtonStyle.Link)
               .setURL(streamInfo.streamUrl)
           );
 
           await notifyChannel.send({
-            content: pingText ? `${pingText} 🎉 **${streamer.channel_name}** yayında!` : `🎉 **${streamer.channel_name}** yayında!`,
+            content: pingText ? `${pingText} 🔴 **${streamer.channel_name}** yayında!` : `🔴 **${streamer.channel_name}** yayında!`,
             embeds: [embed],
             components: [buttonRow]
           }).catch(() => null);
