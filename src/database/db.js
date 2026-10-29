@@ -20,7 +20,9 @@ db.exec(`
     anti_nuke_enabled INTEGER DEFAULT 1,
     media_recovery_enabled INTEGER DEFAULT 1,
     anti_ad_enabled INTEGER DEFAULT 1,
-    auto_timeout_enabled INTEGER DEFAULT 1
+    auto_timeout_enabled INTEGER DEFAULT 1,
+    temp_voice_channel_id TEXT,
+    temp_voice_category_id TEXT
   );
 
   CREATE TABLE IF NOT EXISTS voice_sessions (
@@ -80,15 +82,29 @@ db.exec(`
     last_at INTEGER,
     PRIMARY KEY (guild_id, user_id)
   );
+
+  CREATE TABLE IF NOT EXISTS temp_voices (
+    channel_id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    is_locked INTEGER DEFAULT 0,
+    is_hidden INTEGER DEFAULT 0,
+    user_limit INTEGER DEFAULT 0,
+    control_message_id TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS media_only_channels (
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    PRIMARY KEY (guild_id, channel_id)
+  );
 `);
 
 // Eski tablolarda sütun yoksa güvenle ekle
-try {
-  db.exec('ALTER TABLE guild_log_channels ADD COLUMN anti_ad_enabled INTEGER DEFAULT 1');
-} catch (e) {}
-try {
-  db.exec('ALTER TABLE guild_log_channels ADD COLUMN auto_timeout_enabled INTEGER DEFAULT 1');
-} catch (e) {}
+try { db.exec('ALTER TABLE guild_log_channels ADD COLUMN anti_ad_enabled INTEGER DEFAULT 1'); } catch (e) {}
+try { db.exec('ALTER TABLE guild_log_channels ADD COLUMN auto_timeout_enabled INTEGER DEFAULT 1'); } catch (e) {}
+try { db.exec('ALTER TABLE guild_log_channels ADD COLUMN temp_voice_channel_id TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE guild_log_channels ADD COLUMN temp_voice_category_id TEXT'); } catch (e) {}
 
 function getLogChannels(guildId) {
   let row = db.prepare('SELECT * FROM guild_log_channels WHERE guild_id = ?').get(guildId);

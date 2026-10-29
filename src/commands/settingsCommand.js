@@ -30,24 +30,17 @@ const LOG_CATEGORIES = {
   security_log: { name: '🚨 Güvenlik Alarmları', desc: 'Anti-nuke ve kritik izinler' }
 };
 
-// 1. Ana Dashboard (Sade ve Temiz)
+// 1. Ana Dashboard (Sade ve Minimalist)
 function getGeneralSettingsEmbed(guild) {
   const currentLogs = getLogChannels(guild.id);
   const streamSettings = getStreamSettings(guild.id);
   const streamers = db.prepare('SELECT * FROM streamers WHERE guild_id = ?').all(guild.id);
+  const mediaOnly = db.prepare('SELECT * FROM media_only_channels WHERE guild_id = ?').all(guild.id);
 
   const formatCh = (id) => id ? `<#${id}>` : '`Ayarlanmadı`';
-  const formatRole = (role) => {
-    if (!role) return '`Kapalı`';
-    if (role === 'everyone') return '`@everyone`';
-    if (role === 'here') return '`@here`';
-    return `<@&${role}>`;
-  };
-
   const adStatus = currentLogs.anti_ad_enabled !== 0 ? '🟢 Açık' : '🔴 Kapalı';
   const timeoutStatus = currentLogs.auto_timeout_enabled !== 0 ? '🟢 Açık' : '🔴 Kapalı';
 
-  // Ayarlı log sayısı
   const logKeys = ['message_log', 'media_log', 'voice_log', 'member_log', 'server_log', 'security_log'];
   const activeLogCount = logKeys.filter(k => currentLogs[k]).length;
 
@@ -58,12 +51,11 @@ function getGeneralSettingsEmbed(guild) {
       `**🛡️ Korumalar**\n` +
       `• Reklam Engeli: ${adStatus} *(3. de atar)*\n` +
       `• Küfür/Spam: ${timeoutStatus} *(Katlanan timeout)*\n\n` +
-      `**📜 Log Sistemi**\n` +
-      `• Durum: **${activeLogCount}/6** kategori bağlı\n\n` +
-      `**🔴 Canlı Yayın**\n` +
-      `• Duyuru Kanalı: ${formatCh(streamSettings.announcement_channel_id)}\n` +
-      `• Bildirim Rolü: ${formatRole(streamSettings.ping_role_id)}\n` +
-      `• Takip: **${streamers.length}** yayıncı`
+      `**🎙️ Geçici Ses & Medya**\n` +
+      `• Dinamik Ses Tetikleyici: ${formatCh(currentLogs.temp_voice_channel_id)}\n` +
+      `• Sadece Medya Kanalları: **${mediaOnly.length}** adet aktif\n\n` +
+      `**📜 Sistem Durumu**\n` +
+      `• Loglar: **${activeLogCount}/6** bağlı | Yayıncılar: **${streamers.length}** takipte`
     )
     .setFooter({ text: 'Aşağıdaki menüden yapılandırmak istediğiniz ayarı seçin.' });
 }
@@ -74,6 +66,8 @@ function getMainNavigationMenu() {
     .setPlaceholder('⚙️ Bir ayar kategorisi seçin...')
     .addOptions([
       { label: '🛡️ Güvenlik & Korumalar', value: 'nav_security', description: 'Reklam engeli ve küfür/spam koruması' },
+      { label: '🎙️ Geçici Ses Odaları (Temp Voice)', value: 'nav_tempvoice', description: 'Oda açma kanalı ve kategori seçimi' },
+      { label: '📸 Sadece-Medya Kanalları', value: 'nav_mediaonly', description: 'Yalnızca fotoğraf/video atılabilen kanallar' },
       { label: '📜 Log Kanalları', value: 'nav_logs', description: 'Mesaj, ses, medya ve üye log kanalları' },
       { label: '🔴 Canlı Yayın Duyuruları', value: 'nav_streamers', description: 'Kick ve YouTube yayın bildirimleri' }
     ]);
@@ -104,25 +98,47 @@ function getSecurityActionRow(guild) {
   const adStatus = currentLogs.anti_ad_enabled !== 0;
   const timeoutStatus = currentLogs.auto_timeout_enabled !== 0;
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('settings_toggle_ad')
-      .setLabel(`Reklam: ${adStatus ? 'Açık 🟢' : 'Kapalı 🔴'}`)
-      .setStyle(adStatus ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('settings_toggle_timeout')
-      .setLabel(`Küfür/Spam: ${timeoutStatus ? 'Açık 🟢' : 'Kapalı 🔴'}`)
-      .setStyle(timeoutStatus ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('settings_back_main')
-      .setLabel('◀️ Geri')
-      .setStyle(ButtonStyle.Primary)
-  );
-
-  return [row];
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('settings_toggle_ad').setLabel(`Reklam: ${adStatus ? 'Açık 🟢' : 'Kapalı 🔴'}`).setStyle(adStatus ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('settings_toggle_timeout').setLabel(`Küfür/Spam: ${timeoutStatus ? 'Açık 🟢' : 'Kapalı 🔴'}`).setStyle(timeoutStatus ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('settings_back_main').setLabel('◀️ Geri').setStyle(ButtonStyle.Primary)
+  )];
 }
 
-// 3. Log Kanalları Ekranı
+// 3. Geçici Ses Odaları Ekranı
+function getTempVoiceDashboardEmbed(guild) {
+  const current = getLogChannels(guild.id);
+  const trigger = current.temp_voice_channel_id ? `<#${current.temp_voice_channel_id}>` : '`Ayarlanmadı`';
+  const category = current.temp_voice_category_id ? `<#${current.temp_voice_category_id}>` : '`Ayarlanmadı`';
+
+  return new EmbedBuilder()
+    .setColor(0x2B2D31)
+    .setTitle('🎙️ Geçici Ses Odaları Ayarları')
+    .setDescription(
+      `Kullanıcılar "Oda Oluştur" kanalına girdiğinde anında kendilerine özel oda açılır ve taşınırlar.\n\n` +
+      `• **Oda Oluşturma Tetikleyici Kanalı:** ${trigger}\n` +
+      `• **Odaların Açılacağı Kategori:** ${category}\n\n` +
+      `*Açılan odanın dahili metin sohbetine hem butonlu hem menülü kontrol paneli otomatik gönderilir.*`
+    );
+}
+
+// 4. Sadece-Medya Kanalları Ekranı
+function getMediaOnlyDashboardEmbed(guild) {
+  const channels = db.prepare('SELECT channel_id FROM media_only_channels WHERE guild_id = ?').all(guild.id);
+  const list = channels.length > 0
+    ? channels.map((c, i) => `${i + 1}. <#${c.channel_id}>`).join('\n')
+    : '*Henüz eklenmiş bir kanal yok.*';
+
+  return new EmbedBuilder()
+    .setColor(0x2B2D31)
+    .setTitle('📸 Sadece-Medya Kanalları')
+    .setDescription(
+      `Bu kanallara gönderilen mesajlarda **fotoğraf, video veya medya linki yoksa** bot mesajı anında siler.\n\n` +
+      `**Mevcut Kanallar:**\n${list}`
+    );
+}
+
+// 5. Log Kanalları Ekranı
 function getLogsDashboardEmbed(guild) {
   const current = getLogChannels(guild.id);
   const formatCh = (id) => id ? `<#${id}>` : '`Yok`';
@@ -131,7 +147,6 @@ function getLogsDashboardEmbed(guild) {
     .setColor(0x2B2D31)
     .setTitle('📜 Log Kanalları')
     .setDescription(
-      `Aşağıdaki menüden kategori seçip mevcut kanalınızı bağlayabilirsiniz.\n\n` +
       `• 💬 **Mesaj:** ${formatCh(current.message_log)}\n` +
       `• 📸 **Medya (CDN):** ${formatCh(current.media_log)}\n` +
       `• 🎙️ **Ses:** ${formatCh(current.voice_log)}\n` +
@@ -141,7 +156,7 @@ function getLogsDashboardEmbed(guild) {
     );
 }
 
-// 4. Yayıncı Duyuru Ekranı
+// 6. Yayıncı Duyuru Ekranı
 function getStreamersDashboardEmbed(guild) {
   const streamSettings = getStreamSettings(guild.id);
   const streamers = db.prepare('SELECT * FROM streamers WHERE guild_id = ?').all(guild.id);
@@ -166,21 +181,6 @@ function getStreamersDashboardEmbed(guild) {
       `• **Bildirim Rolü:** ${formatRole(streamSettings.ping_role_id)}\n\n` +
       `**Takip Listesi:**\n${streamerList}`
     );
-}
-
-function getStreamerActionRows(guild) {
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('stream_btn_set_channel').setLabel('📢 Kanal Seç').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('stream_btn_add_streamer').setLabel('➕ Yayıncı Ekle').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('stream_btn_remove_streamer').setLabel('🗑️ Yayıncı Sil').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('stream_btn_set_role').setLabel('🔔 Rol Seç').setStyle(ButtonStyle.Secondary)
-  );
-
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('settings_back_main').setLabel('◀️ Geri').setStyle(ButtonStyle.Secondary)
-  );
-
-  return [row1, row2];
 }
 
 const settingsCommand = {
@@ -210,9 +210,46 @@ async function handleSettingsInteraction(interaction) {
     const choice = interaction.values[0];
 
     if (choice === 'nav_security') {
-      const secEmbed = getSecurityDashboardEmbed(guild);
-      const rows = getSecurityActionRow(guild);
-      return interaction.update({ embeds: [secEmbed], components: rows });
+      return interaction.update({ embeds: [getSecurityDashboardEmbed(guild)], components: getSecurityActionRow(guild) });
+    }
+
+    if (choice === 'nav_tempvoice') {
+      const channelRow = new ActionRowBuilder().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId('settings_tv_set_trigger')
+          .setPlaceholder('➕ Oda Oluşturma Ses Kanalını Seçin...')
+          .setChannelTypes(ChannelType.GuildVoice)
+      );
+      const catRow = new ActionRowBuilder().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId('settings_tv_set_category')
+          .setPlaceholder('📁 Odaların Açılacağı Kategoriyi Seçin...')
+          .setChannelTypes(ChannelType.GuildCategory)
+      );
+      const backRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('settings_back_main').setLabel('◀️ Geri').setStyle(ButtonStyle.Secondary)
+      );
+
+      return interaction.update({
+        embeds: [getTempVoiceDashboardEmbed(guild)],
+        components: [channelRow, catRow, backRow]
+      });
+    }
+
+    if (choice === 'nav_mediaonly') {
+      const chMenu = new ChannelSelectMenuBuilder()
+        .setCustomId('settings_mediaonly_toggle')
+        .setPlaceholder('Sadece-Medya listesine kanal ekle/çıkar...')
+        .setChannelTypes(ChannelType.GuildText);
+
+      const backRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('settings_back_main').setLabel('◀️ Geri').setStyle(ButtonStyle.Secondary)
+      );
+
+      return interaction.update({
+        embeds: [getMediaOnlyDashboardEmbed(guild)],
+        components: [new ActionRowBuilder().addComponents(chMenu), backRow]
+      });
     }
 
     if (choice === 'nav_logs') {
@@ -231,49 +268,76 @@ async function handleSettingsInteraction(interaction) {
         new ButtonBuilder().setCustomId('settings_back_main').setLabel('◀️ Geri').setStyle(ButtonStyle.Secondary)
       );
 
-      const logEmbed = getLogsDashboardEmbed(guild);
       return interaction.update({
-        embeds: [logEmbed],
+        embeds: [getLogsDashboardEmbed(guild)],
         components: [new ActionRowBuilder().addComponents(menu), backRow]
       });
     }
 
     if (choice === 'nav_streamers') {
-      const streamEmbed = getStreamersDashboardEmbed(guild);
-      const rows = getStreamerActionRows(guild);
-      return interaction.update({ embeds: [streamEmbed], components: rows });
+      const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('stream_btn_set_channel').setLabel('📢 Kanal Seç').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('stream_btn_add_streamer').setLabel('➕ Yayıncı Ekle').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('stream_btn_remove_streamer').setLabel('🗑️ Yayıncı Sil').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('stream_btn_set_role').setLabel('🔔 Rol Seç').setStyle(ButtonStyle.Secondary)
+      );
+      const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('settings_back_main').setLabel('◀️ Geri').setStyle(ButtonStyle.Secondary)
+      );
+
+      return interaction.update({
+        embeds: [getStreamersDashboardEmbed(guild)],
+        components: [row1, row2]
+      });
     }
   }
 
   // 2. Ana Menüye Dönüş
   if (customId === 'settings_back_main') {
-    const embed = getGeneralSettingsEmbed(guild);
-    const navRow = getMainNavigationMenu();
-    return interaction.update({ embeds: [embed], components: [navRow] });
+    return interaction.update({ embeds: [getGeneralSettingsEmbed(guild)], components: [getMainNavigationMenu()] });
   }
 
-  // 3. Güvenlik Buton Aç/Kapa
+  // 3. Güvenlik Butonları
   if (customId === 'settings_toggle_ad') {
-    const currentLogs = getLogChannels(guild.id);
-    const newState = currentLogs.anti_ad_enabled !== 0 ? 0 : 1;
-    updateLogChannel(guild.id, 'anti_ad_enabled', newState);
-
-    const secEmbed = getSecurityDashboardEmbed(guild);
-    const rows = getSecurityActionRow(guild);
-    return interaction.update({ embeds: [secEmbed], components: rows });
+    const current = getLogChannels(guild.id);
+    updateLogChannel(guild.id, 'anti_ad_enabled', current.anti_ad_enabled !== 0 ? 0 : 1);
+    return interaction.update({ embeds: [getSecurityDashboardEmbed(guild)], components: getSecurityActionRow(guild) });
   }
 
   if (customId === 'settings_toggle_timeout') {
-    const currentLogs = getLogChannels(guild.id);
-    const newState = currentLogs.auto_timeout_enabled !== 0 ? 0 : 1;
-    updateLogChannel(guild.id, 'auto_timeout_enabled', newState);
-
-    const secEmbed = getSecurityDashboardEmbed(guild);
-    const rows = getSecurityActionRow(guild);
-    return interaction.update({ embeds: [secEmbed], components: rows });
+    const current = getLogChannels(guild.id);
+    updateLogChannel(guild.id, 'auto_timeout_enabled', current.auto_timeout_enabled !== 0 ? 0 : 1);
+    return interaction.update({ embeds: [getSecurityDashboardEmbed(guild)], components: getSecurityActionRow(guild) });
   }
 
-  // 4. Log Kanalı Seçim Adımları
+  // 4. Temp Voice Ayarları
+  if (customId === 'settings_tv_set_trigger') {
+    const chId = interaction.values[0];
+    updateLogChannel(guild.id, 'temp_voice_channel_id', chId);
+    return interaction.reply({ content: `✅ Oda oluşturma tetikleyici kanalı <#${chId}> olarak ayarlandı.`, ephemeral: true });
+  }
+
+  if (customId === 'settings_tv_set_category') {
+    const catId = interaction.values[0];
+    updateLogChannel(guild.id, 'temp_voice_category_id', catId);
+    return interaction.reply({ content: `✅ Dinamik odaların açılacağı kategori belirlendi.`, ephemeral: true });
+  }
+
+  // 5. Sadece-Medya Kanal Ekleme/Çıkarma
+  if (customId === 'settings_mediaonly_toggle') {
+    const chId = interaction.values[0];
+    const exists = db.prepare('SELECT 1 FROM media_only_channels WHERE guild_id = ? AND channel_id = ?').get(guild.id, chId);
+
+    if (exists) {
+      db.prepare('DELETE FROM media_only_channels WHERE guild_id = ? AND channel_id = ?').run(guild.id, chId);
+      return interaction.reply({ content: `❌ <#${chId}> Sadece-Medya listesinden çıkarıldı.`, ephemeral: true });
+    } else {
+      db.prepare('INSERT INTO media_only_channels (guild_id, channel_id) VALUES (?, ?)').run(guild.id, chId);
+      return interaction.reply({ content: `✅ <#${chId}> kanalı Sadece-Medya olarak ayarlandı. (Metin mesajları silinecektir)`, ephemeral: true });
+    }
+  }
+
+  // 6. Log Kanalı Seçim Adımları
   if (customId === 'settings_select_log_cat') {
     const selectedCategory = interaction.values[0];
     const catInfo = LOG_CATEGORIES[selectedCategory];
@@ -293,130 +357,71 @@ async function handleSettingsInteraction(interaction) {
       .setTitle(`📌 Kanal Seçimi: ${catInfo.name}`)
       .setDescription(`Bu kategori için logların aktarılacağı metin kanalını seçin:`);
 
-    return interaction.update({
-      embeds: [promptEmbed],
-      components: [new ActionRowBuilder().addComponents(chMenu), btnRow]
-    });
+    return interaction.update({ embeds: [promptEmbed], components: [new ActionRowBuilder().addComponents(chMenu), btnRow] });
   }
 
   if (customId.startsWith('settings_bind_log_')) {
     const categoryKey = customId.replace('settings_bind_log_', '');
-    const chosenChannelId = interaction.values[0];
-    updateLogChannel(guild.id, categoryKey, chosenChannelId);
-
-    const embed = getGeneralSettingsEmbed(guild);
-    return interaction.update({ embeds: [embed], components: [getMainNavigationMenu()] });
+    updateLogChannel(guild.id, categoryKey, interaction.values[0]);
+    return interaction.update({ embeds: [getGeneralSettingsEmbed(guild)], components: [getMainNavigationMenu()] });
   }
 
   if (customId.startsWith('settings_unbind_log_')) {
     const categoryKey = customId.replace('settings_unbind_log_', '');
     updateLogChannel(guild.id, categoryKey, null);
-
-    const embed = getGeneralSettingsEmbed(guild);
-    return interaction.update({ embeds: [embed], components: [getMainNavigationMenu()] });
+    return interaction.update({ embeds: [getGeneralSettingsEmbed(guild)], components: [getMainNavigationMenu()] });
   }
 
-  // 5. Canlı Yayın Duyuru Etkileşimleri
+  // 7. Canlı Yayın Duyuru Etkileşimleri
   if (customId === 'stream_btn_set_channel') {
-    const chMenu = new ChannelSelectMenuBuilder()
-      .setCustomId('stream_select_channel')
-      .setPlaceholder('Duyuruların atılacağı kanalı seçin...')
-      .setChannelTypes(ChannelType.GuildText);
-
-    const row = new ActionRowBuilder().addComponents(chMenu);
-    return interaction.reply({ content: '📢 Lütfen duyuru kanalını seçin:', components: [row], ephemeral: true });
+    const chMenu = new ChannelSelectMenuBuilder().setCustomId('stream_select_channel').setPlaceholder('Duyuruların atılacağı kanalı seçin...').setChannelTypes(ChannelType.GuildText);
+    return interaction.reply({ content: '📢 Lütfen duyuru kanalını seçin:', components: [new ActionRowBuilder().addComponents(chMenu)], ephemeral: true });
   }
 
   if (customId === 'stream_select_channel') {
-    const chId = interaction.values[0];
-    updateStreamSettings(guild.id, 'announcement_channel_id', chId);
-    return interaction.update({ content: `✅ Canlı yayın duyuru kanalı <#${chId}> olarak belirlendi.`, components: [] });
+    updateStreamSettings(guild.id, 'announcement_channel_id', interaction.values[0]);
+    return interaction.update({ content: `✅ Canlı yayın duyuru kanalı <#${interaction.values[0]}> olarak belirlendi.`, components: [] });
   }
 
   if (customId === 'stream_btn_add_streamer') {
-    const modal = new ModalBuilder()
-      .setCustomId('stream_modal_add')
-      .setTitle('Yayıncı Ekle');
+    const modal = new ModalBuilder().setCustomId('stream_modal_add').setTitle('Yayıncı Ekle');
+    const pIn = new TextInputBuilder().setCustomId('streamer_platform').setLabel('Platform (kick veya youtube)').setPlaceholder('kick / youtube').setStyle(TextInputStyle.Short).setRequired(true);
+    const nIn = new TextInputBuilder().setCustomId('streamer_name').setLabel('Yayıncı Adı').setPlaceholder('Örn: Elraenn, Tolunay Ören').setStyle(TextInputStyle.Short).setRequired(true);
+    const uIn = new TextInputBuilder().setCustomId('streamer_url').setLabel('Kanal Linki veya Kullanıcı Adı').setPlaceholder('https://kick.com/elraenn veya @tolunayoren').setStyle(TextInputStyle.Short).setRequired(true);
 
-    const platformInput = new TextInputBuilder()
-      .setCustomId('streamer_platform')
-      .setLabel('Platform (kick veya youtube)')
-      .setPlaceholder('kick / youtube')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    const nameInput = new TextInputBuilder()
-      .setCustomId('streamer_name')
-      .setLabel('Yayıncı Adı')
-      .setPlaceholder('Örn: Elraenn, Tolunay Ören')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    const urlInput = new TextInputBuilder()
-      .setCustomId('streamer_url')
-      .setLabel('Kanal Linki veya Kullanıcı Adı')
-      .setPlaceholder('https://kick.com/elraenn veya @tolunayoren')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(platformInput),
-      new ActionRowBuilder().addComponents(nameInput),
-      new ActionRowBuilder().addComponents(urlInput)
-    );
-
+    modal.addComponents(new ActionRowBuilder().addComponents(pIn), new ActionRowBuilder().addComponents(nIn), new ActionRowBuilder().addComponents(uIn));
     return interaction.showModal(modal);
   }
 
   if (customId === 'stream_btn_remove_streamer') {
     const streamers = db.prepare('SELECT * FROM streamers WHERE guild_id = ?').all(guild.id);
-    if (streamers.length === 0) {
-      return interaction.reply({ content: '⚠️ Ekli bir yayıncı bulunmuyor.', ephemeral: true });
-    }
+    if (streamers.length === 0) return interaction.reply({ content: '⚠️ Ekli bir yayıncı bulunmuyor.', ephemeral: true });
 
-    const select = new StringSelectMenuBuilder()
-      .setCustomId('stream_select_delete')
-      .setPlaceholder('Silmek istediğiniz yayıncıyı seçin...')
-      .addOptions(streamers.map(s => ({
-        label: `${s.channel_name} (${s.platform.toUpperCase()})`,
-        value: `${s.id}`,
-        description: s.channel_url.slice(0, 50)
-      })));
+    const select = new StringSelectMenuBuilder().setCustomId('stream_select_delete').setPlaceholder('Silmek istediğiniz yayıncıyı seçin...').addOptions(streamers.map(s => ({
+      label: `${s.channel_name} (${s.platform.toUpperCase()})`, value: `${s.id}`, description: s.channel_url.slice(0, 50)
+    })));
 
-    return interaction.reply({
-      content: '🗑️ Silinecek yayıncıyı seçin:',
-      components: [new ActionRowBuilder().addComponents(select)],
-      ephemeral: true
-    });
+    return interaction.reply({ content: '🗑️ Silinecek yayıncıyı seçin:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
   }
 
   if (customId === 'stream_select_delete') {
-    const streamerId = interaction.values[0];
-    db.prepare('DELETE FROM streamers WHERE id = ? AND guild_id = ?').run(streamerId, guild.id);
+    db.prepare('DELETE FROM streamers WHERE id = ? AND guild_id = ?').run(interaction.values[0], guild.id);
     return interaction.update({ content: '✅ Yayıncı listeden kaldırıldı.', components: [] });
   }
 
   if (customId === 'stream_btn_set_role') {
-    const roleMenu = new RoleSelectMenuBuilder()
-      .setCustomId('stream_select_role')
-      .setPlaceholder('Etiketlenecek rolü seçin...');
-
+    const roleMenu = new RoleSelectMenuBuilder().setCustomId('stream_select_role').setPlaceholder('Etiketlenecek rolü seçin...');
     const btnRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('stream_role_everyone').setLabel('@everyone').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('stream_role_none').setLabel('Kapat').setStyle(ButtonStyle.Secondary)
     );
 
-    return interaction.reply({
-      content: '🔔 Canlı yayın başladığında hangi rol etiketlensin?',
-      components: [new ActionRowBuilder().addComponents(roleMenu), btnRow],
-      ephemeral: true
-    });
+    return interaction.reply({ content: '🔔 Canlı yayın başladığında hangi rol etiketlensin?', components: [new ActionRowBuilder().addComponents(roleMenu), btnRow], ephemeral: true });
   }
 
   if (customId === 'stream_select_role') {
-    const roleId = interaction.values[0];
-    updateStreamSettings(guild.id, 'ping_role_id', roleId);
-    return interaction.update({ content: `✅ Bildirim rolü <@&${roleId}> olarak ayarlandı.`, components: [] });
+    updateStreamSettings(guild.id, 'ping_role_id', interaction.values[0]);
+    return interaction.update({ content: `✅ Bildirim rolü <@&${interaction.values[0]}> olarak ayarlandı.`, components: [] });
   }
 
   if (customId === 'stream_role_everyone') {
@@ -439,20 +444,14 @@ async function handleStreamModal(interaction) {
   const url = interaction.fields.getTextInputValue('streamer_url').trim();
 
   const platform = rawPlatform.includes('kick') ? 'kick' : (rawPlatform.includes('you') ? 'youtube' : null);
-
-  if (!platform) {
-    return interaction.reply({ content: '❌ Geçersiz platform! Yalnızca `kick` veya `youtube` yazın.', ephemeral: true });
-  }
+  if (!platform) return interaction.reply({ content: '❌ Geçersiz platform! Yalnızca `kick` veya `youtube` yazın.', ephemeral: true });
 
   db.prepare(`
     INSERT INTO streamers (guild_id, platform, channel_name, channel_url, is_live)
     VALUES (?, ?, ?, ?, 0)
   `).run(interaction.guild.id, platform, name, url);
 
-  return interaction.reply({
-    content: `✅ **${name}** (${platform.toUpperCase()}) listeye eklendi!`,
-    ephemeral: true
-  });
+  return interaction.reply({ content: `✅ **${name}** (${platform.toUpperCase()}) listeye eklendi!`, ephemeral: true });
 }
 
 module.exports = {

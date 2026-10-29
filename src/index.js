@@ -30,6 +30,14 @@ const {
 
 const { handleAntiAd } = require('./modules/moderation/antiAd');
 const { handleAutoModeration } = require('./modules/moderation/autoTimeout');
+const { handleMediaOnly } = require('./modules/moderation/mediaOnly');
+const {
+  handleTempVoice,
+  handleTempVoiceInteraction,
+  handleTempVoiceModal,
+  cleanupGhostTempRooms
+} = require('./modules/tempvoice/tempVoiceManager');
+
 const { initStreamNotificationScheduler } = require('./modules/stream/streamChecker');
 const {
   settingsCommand,
@@ -81,7 +89,7 @@ async function deployCommandsToGuild(rest, clientId, guild) {
 
 // Bot Hazır Olduğunda
 client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Beluga Ultra Logger & Moderation Aktif: ${c.user.tag}`);
+  console.log(`🤖 Beluga Ultra Logger & Temp Voice Aktif: ${c.user.tag}`);
   console.log(`📊 Botun bulunduğu sunucu sayısı: ${c.guilds.cache.size}`);
 
   const rest = new REST().setToken(process.env.DISCORD_TOKEN);
@@ -101,6 +109,9 @@ client.once(Events.ClientReady, async (c) => {
   for (const [_, guild] of c.guilds.cache) {
     await deployCommandsToGuild(rest, c.user.id, guild);
   }
+
+  // Hayalet Ses Odalarını Temizle
+  await cleanupGhostTempRooms(c);
 
   // Canlı Yayın Takip Döngüsünü Başlat
   initStreamNotificationScheduler(c);
@@ -123,16 +134,20 @@ client.on(Events.GuildCreate, async (guild) => {
   await deployCommandsToGuild(rest, client.user.id, guild);
 });
 
-// Mesaj Denetimi: Önce Uyarısız Reklam/Link Kontrolü, Sonra Katlanan Timeout
+// Mesaj Denetimi: Sadece-Medya ➔ Reklam ➔ Küfür/Spam Timeout
 client.on(Events.MessageCreate, async (message) => {
+  const isMediaBlocked = await handleMediaOnly(message);
+  if (isMediaBlocked) return;
+
   const isAd = await handleAntiAd(message);
   if (isAd) return;
 
   await handleAutoModeration(message);
 });
 
-// 1. SES LOGLARI (Mikrofon, Kulaklık, Kamera, Yayın, Giriş/Çıkış, Mesai)
+// 1. SES LOGLARI & DİNAMİK GEÇİCİ SES ODALARI (Temp Voice)
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  await handleTempVoice(oldState, newState);
   await handleVoiceState(oldState, newState);
 });
 
@@ -214,12 +229,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
 
+    // Modal Formlar
     if (interaction.isModalSubmit()) {
       if (interaction.customId === 'stream_modal_add') {
         return await handleStreamModal(interaction);
       }
+      if (interaction.customId === 'tv_modal_rename') {
+        return await handleTempVoiceModal(interaction);
+      }
     }
 
+    // Temp Voice Etkileşimleri (Buton ve Menü)
+    if (interaction.customId?.startsWith('tv_')) {
+      return await handleTempVoiceInteraction(interaction);
+    }
+
+    // Ayarlar Paneli ve Yayıncı Etkileşimleri
     if (interaction.customId?.startsWith('settings_') || interaction.customId?.startsWith('stream_')) {
       return await handleSettingsInteraction(interaction);
     }
