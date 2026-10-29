@@ -37,6 +37,13 @@ const {
   handleStreamModal
 } = require('./commands/settingsCommand');
 
+const {
+  temizleCommand,
+  kilitCommand,
+  yavasModCommand,
+  afCommand
+} = require('./commands/chatCommands');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -51,7 +58,13 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.GuildMember, Partials.User]
 });
 
-const slashCommands = [settingsCommand.data];
+const slashCommands = [
+  settingsCommand.data,
+  temizleCommand.data,
+  kilitCommand.data,
+  yavasModCommand.data,
+  afCommand.data
+];
 
 // Slash Komutlarını Belirli Bir Sunucuya Kaydetme Fonksiyonu
 async function deployCommandsToGuild(rest, clientId, guild) {
@@ -60,7 +73,7 @@ async function deployCommandsToGuild(rest, clientId, guild) {
       Routes.applicationGuildCommands(clientId, guild.id),
       { body: slashCommands.map(cmd => cmd.toJSON()) }
     );
-    console.log(`⚡ [${guild.name}] sunucusuna /ayarlar komutu kaydedildi.`);
+    console.log(`⚡ [${guild.name}] sunucusuna komutlar kaydedildi.`);
   } catch (err) {
     console.error(`❌ [${guild.name}] komut yükleme hatası:`, err.message);
   }
@@ -68,7 +81,7 @@ async function deployCommandsToGuild(rest, clientId, guild) {
 
 // Bot Hazır Olduğunda
 client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Beluga Ultra Logger, Stream Alerts & Anti-Ad Aktif: ${c.user.tag}`);
+  console.log(`🤖 Beluga Ultra Logger & Moderation Aktif: ${c.user.tag}`);
   console.log(`📊 Botun bulunduğu sunucu sayısı: ${c.guilds.cache.size}`);
 
   const rest = new REST().setToken(process.env.DISCORD_TOKEN);
@@ -186,6 +199,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'ayarlar') {
         return await settingsCommand.execute(interaction);
+      }
+      if (interaction.commandName === 'temizle') {
+        return await temizleCommand.execute(interaction);
+      }
+      if (interaction.commandName === 'kilit') {
+        return await kilitCommand.execute(interaction);
+      }
+      if (interaction.commandName === 'yavas-mod') {
+        return await yavasModCommand.execute(interaction);
+      }
+      if (interaction.commandName === 'af') {
+        return await afCommand.execute(interaction);
       }
     }
 
