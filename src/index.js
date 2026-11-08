@@ -3,55 +3,13 @@ const {
   Client,
   GatewayIntentBits,
   Partials,
-  REST,
-  Routes,
-  Events,
-  AuditLogEvent
+  Collection
 } = require('discord.js');
 
-const { db } = require('./database/db');
-const {
-  handleVoiceState,
-  handleMessageDelete,
-  handleMessageUpdate,
-  handleMessageDeleteBulk,
-  handleMemberJoin,
-  handleMemberLeave,
-  handleMemberUpdate,
-  handleGuildBanAdd,
-  handleGuildBanRemove,
-  handleChannelCreate,
-  handleChannelDelete,
-  handleRoleCreate,
-  handleRoleDelete,
-  handleRoleUpdate,
-  checkAntiNuke
-} = require('./modules/logger/loggerManager');
+const { loadEvents } = require('./handlers/eventHandler');
+const { loadCommands } = require('./handlers/commandHandler');
 
-const { handleAntiAd } = require('./modules/moderation/antiAd');
-const { handleAutoModeration } = require('./modules/moderation/autoTimeout');
-const { handleMediaOnly } = require('./modules/moderation/mediaOnly');
-const {
-  handleTempVoice,
-  handleTempVoiceInteraction,
-  handleTempVoiceModal,
-  cleanupGhostTempRooms
-} = require('./modules/tempvoice/tempVoiceManager');
-
-const { initStreamNotificationScheduler } = require('./modules/stream/streamChecker');
-const {
-  settingsCommand,
-  handleSettingsInteraction,
-  handleStreamModal
-} = require('./commands/settingsCommand');
-
-const {
-  temizleCommand,
-  kilitCommand,
-  yavasModCommand,
-  afCommand
-} = require('./commands/chatCommands');
-
+// İstemci (Client) Tanımlama
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -63,204 +21,36 @@ const client = new Client({
     GatewayIntentBits.GuildModeration,
     GatewayIntentBits.GuildEmojisAndStickers
   ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.GuildMember, Partials.User]
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction,
+    Partials.GuildMember,
+    Partials.User
+  ]
 });
 
-const slashCommands = [
-  settingsCommand.data,
-  temizleCommand.data,
-  kilitCommand.data,
-  yavasModCommand.data,
-  afCommand.data
-];
+// Koleksiyonlar
+client.commands = new Collection();
 
-// Slash Komutlarını Belirli Bir Sunucuya Kaydetme Fonksiyonu
-async function deployCommandsToGuild(rest, clientId, guild) {
-  try {
-    await rest.put(
-      Routes.applicationGuildCommands(clientId, guild.id),
-      { body: slashCommands.map(cmd => cmd.toJSON()) }
-    );
-    console.log(`⚡ [${guild.name}] sunucusuna komutlar kaydedildi.`);
-  } catch (err) {
-    console.error(`❌ [${guild.name}] komut yükleme hatası:`, err.message);
-  }
-}
+// Olayları ve Komutları Yükle
+loadEvents(client);
+client.slashCommandsArray = loadCommands(client);
 
-// Bot Hazır Olduğunda
-client.once(Events.ClientReady, async (c) => {
-  console.log(`🤖 Beluga Ultra Logger & Temp Voice Aktif: ${c.user.tag}`);
-  console.log(`📊 Botun bulunduğu sunucu sayısı: ${c.guilds.cache.size}`);
-
-  const rest = new REST().setToken(process.env.DISCORD_TOKEN);
-
-  // 1. Çift komut görünmesini engellemek için Global listeyi temizle
-  try {
-    await rest.put(
-      Routes.applicationCommands(c.user.id),
-      { body: [] }
-    );
-    console.log('🧹 Eski global komutlar temizlendi.');
-  } catch (err) {
-    console.error('Global temizleme hatası:', err.message);
-  }
-
-  // 2. Yalnızca sunucu düzeyinde anında kaydet
-  for (const [_, guild] of c.guilds.cache) {
-    await deployCommandsToGuild(rest, c.user.id, guild);
-  }
-
-  // Hayalet Ses Odalarını Temizle
-  await cleanupGhostTempRooms(c);
-
-  // Canlı Yayın Takip Döngüsünü Başlat
-  initStreamNotificationScheduler(c);
-
-  // Mevcut davetleri önbelleğe al
-  for (const [_, guild] of c.guilds.cache) {
-    try {
-      const invites = await guild.invites.fetch();
-      for (const [code, inv] of invites) {
-        db.prepare('INSERT OR REPLACE INTO guild_invites (guild_id, code, inviter_id, uses) VALUES (?, ?, ?, ?)')
-          .run(guild.id, code, inv.inviter?.id || null, inv.uses);
-      }
-    } catch (e) {}
-  }
+// Hata Yakalayıcılar (Botun çökmesini önler)
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ [Hata Yakalandı - unhandledRejection]:', reason);
 });
 
-// Bot Yeni Bir Sunucuya Eklendiğinde Komutları Yükle
-client.on(Events.GuildCreate, async (guild) => {
-  const rest = new REST().setToken(process.env.DISCORD_TOKEN);
-  await deployCommandsToGuild(rest, client.user.id, guild);
-});
-
-// Mesaj Denetimi: Sadece-Medya ➔ Reklam ➔ Küfür/Spam Timeout
-client.on(Events.MessageCreate, async (message) => {
-  const isMediaBlocked = await handleMediaOnly(message);
-  if (isMediaBlocked) return;
-
-  const isAd = await handleAntiAd(message);
-  if (isAd) return;
-
-  await handleAutoModeration(message);
-});
-
-// 1. SES LOGLARI & DİNAMİK GEÇİCİ SES ODALARI (Temp Voice)
-client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
-  await handleTempVoice(oldState, newState);
-  await handleVoiceState(oldState, newState);
-});
-
-// 2. MESAJ LOGLARI (Silme, Düzenleme, CDN Medya Kurtarma, Ghost Ping)
-client.on(Events.MessageDelete, async (message) => {
-  await handleMessageDelete(message);
-});
-
-client.on(Events.MessageUpdate, async (oldMsg, newMsg) => {
-  await handleMessageUpdate(oldMsg, newMsg);
-});
-
-client.on(Events.MessageBulkDelete, async (messages, channel) => {
-  await handleMessageDeleteBulk(messages, channel);
-});
-
-// 3. ÜYE HAREKETLERİ (Giriş, Çıkış, İsim, Rol, Timeout, Ban)
-client.on(Events.GuildMemberAdd, async (member) => {
-  await handleMemberJoin(member);
-});
-
-client.on(Events.GuildMemberRemove, async (member) => {
-  await handleMemberLeave(member);
-});
-
-client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
-  await handleMemberUpdate(oldMember, newMember);
-});
-
-client.on(Events.GuildBanAdd, async (ban) => {
-  await handleGuildBanAdd(ban);
-});
-
-client.on(Events.GuildBanRemove, async (ban) => {
-  await handleGuildBanRemove(ban);
-});
-
-// 4. KANAL, ROL & GÜVENLİK
-client.on(Events.ChannelCreate, async (channel) => {
-  await handleChannelCreate(channel);
-});
-
-client.on(Events.ChannelDelete, async (channel) => {
-  await handleChannelDelete(channel);
-  if (channel.guild) await checkAntiNuke(channel.guild, AuditLogEvent.ChannelDelete);
-});
-
-client.on(Events.RoleCreate, async (role) => {
-  await handleRoleCreate(role);
-});
-
-client.on(Events.RoleDelete, async (role) => {
-  await handleRoleDelete(role);
-  if (role.guild) await checkAntiNuke(role.guild, AuditLogEvent.RoleDelete);
-});
-
-client.on(Events.RoleUpdate, async (oldRole, newRole) => {
-  await handleRoleUpdate(oldRole, newRole);
-});
-
-// 5. ETKİLEŞİMLER (Slash Komutları, Butonlar, Menüler, Modallar)
-client.on(Events.InteractionCreate, async (interaction) => {
-  try {
-    if (interaction.isChatInputCommand()) {
-      if (interaction.commandName === 'ayarlar') {
-        return await settingsCommand.execute(interaction);
-      }
-      if (interaction.commandName === 'temizle') {
-        return await temizleCommand.execute(interaction);
-      }
-      if (interaction.commandName === 'kilit') {
-        return await kilitCommand.execute(interaction);
-      }
-      if (interaction.commandName === 'yavas-mod') {
-        return await yavasModCommand.execute(interaction);
-      }
-      if (interaction.commandName === 'af') {
-        return await afCommand.execute(interaction);
-      }
-    }
-
-    // Modal Formlar
-    if (interaction.isModalSubmit()) {
-      if (interaction.customId === 'stream_modal_add') {
-        return await handleStreamModal(interaction);
-      }
-      if (interaction.customId === 'tv_modal_rename') {
-        return await handleTempVoiceModal(interaction);
-      }
-    }
-
-    // Temp Voice Etkileşimleri (Buton ve Menü)
-    if (interaction.customId?.startsWith('tv_')) {
-      return await handleTempVoiceInteraction(interaction);
-    }
-
-    // Ayarlar Paneli ve Yayıncı Etkileşimleri
-    if (interaction.customId?.startsWith('settings_') || interaction.customId?.startsWith('stream_')) {
-      return await handleSettingsInteraction(interaction);
-    }
-  } catch (err) {
-    console.error('Etkileşim hatası:', err);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ İşlem sırasında bir hata oluştu.', ephemeral: true }).catch(() => null);
-    }
-  }
+process.on('uncaughtException', (err, origin) => {
+  console.error('💥 [Kritik Hata - uncaughtException]:', err);
 });
 
 // Botu Başlat
 if (process.env.DISCORD_TOKEN) {
   client.login(process.env.DISCORD_TOKEN).catch(err => {
-    console.error('Bot giriş hatası:', err.message);
+    console.error('❌ Bot giriş hatası:', err.message);
   });
 } else {
-  console.log('⚠️ DISCORD_TOKEN tanımlanmadı. Lütfen .env dosyasını doldurun.');
+  console.error('⚠️ DISCORD_TOKEN tanımlanmadı. Lütfen .env dosyasını kontrol edin.');
 }
